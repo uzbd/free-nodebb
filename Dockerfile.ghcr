@@ -1,0 +1,15 @@
+# Render will pull this prebuilt image from GHCR.
+FROM ghcr.io/nodebb/nodebb:v4.16.8
+
+USER root
+
+# The official NodeBB image declares /usr/src/app/build as a volume.
+# Store CI-generated assets outside that volume, then copy them at startup.
+COPY --chown=nodebb:nodebb build/ /opt/nodebb-prebuilt-build/
+COPY --chown=nodebb:nodebb docker-entrypoint-wrapper.sh /usr/local/bin/entrypoint-wrapper.sh
+
+RUN chmod 755 /usr/local/bin/entrypoint-wrapper.sh
+
+USER nodebb
+
+ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint-wrapper.sh"]

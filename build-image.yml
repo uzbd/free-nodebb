@@ -1,0 +1,79 @@
+name: Build and publish NodeBB image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile.ghcr'
+      - 'docker-entrypoint-wrapper.sh'
+      - '.github/workflows/build-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: nodebb-ghcr-image
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare build directory
+        run: mkdir -p build
+
+      - name: Build NodeBB assets sequentially in CI
+        env:
+          CI_ADMIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-CiOnly-Aa9!
+        run: |
+          docker run --rm --network host \
+            -e NODE_ENV=production \
+            -e NODEBB_URL=http://localhost:4567 \
+            -e NODEBB_PORT=4567 \
+            -e NODEBB_DB=mongo \
+            -e NODEBB_DB_HOST=127.0.0.1 \
+            -e NODEBB_DB_PORT=27017 \
+            -e NODEBB_DB_NAME=nodebb \
+            -e NODEBB_ADMIN_USERNAME=ciadmin \
+            -e NODEBB_ADMIN_PASSWORD="$CI_ADMIN_PASSWORD" \
+            -e NODEBB_ADMIN_EMAIL=ci@example.invalid \
+            -v "${{ github.workspace }}/build:/usr/src/app/build" \
+            --entrypoint bash \
+            ghcr.io/nodebb/nodebb:v4.16.8 \
+            -lc '/usr/src/app/nodebb --config=/tmp/nodebb-ci-config.json setup --skip-build && /usr/src/app/nodebb --config=/tmp/nodebb-ci-config.json build --series'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ghcr
+          push: true
+          platforms: linux/amd64
+          tags: ghcr.io/uzbd/free-nodebb:latest
