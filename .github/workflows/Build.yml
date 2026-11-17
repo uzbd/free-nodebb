@@ -41,7 +41,7 @@ jobs:
       - name: Prepare build directory
         run: mkdir -p build
 
-      - name: Verify official NodeBB image
+      - name: Pull official NodeBB image
         run: docker pull ghcr.io/nodebb/nodebb:latest
 
       - name: Build NodeBB assets sequentially in CI
@@ -52,7 +52,6 @@ jobs:
 
           docker run --rm --network host \
             -e NODE_ENV=production \
-            -e NODEBB_INIT_VERB=setup \
             -e NODEBB_URL=http://localhost:4567 \
             -e NODEBB_PORT=4567 \
             -e NODEBB_DB=mongo \
@@ -65,7 +64,18 @@ jobs:
             -v "${{ github.workspace }}/build:/usr/src/app/build" \
             --entrypoint bash \
             ghcr.io/nodebb/nodebb:latest \
-            -lc '/usr/src/app/nodebb setup --config=/tmp/nodebb-ci-config.json && /usr/src/app/nodebb build --config=/tmp/nodebb-ci-config.json --series'
+            -lc '/usr/src/app/nodebb setup --config=/tmp/nodebb-ci-config.json --skip-build && /usr/src/app/nodebb build --config=/tmp/nodebb-ci-config.json --series'
+
+      - name: Verify prebuilt assets
+        run: |
+          echo "Checking generated NodeBB assets..."
+          if [ -z "$(find build -type f -print -quit)" ]; then
+            echo "ERROR: Build directory is empty!"
+            exit 1
+          fi
+          echo "Prebuilt assets found:"
+          du -sh build
+          find build -maxdepth 2 -type f | head -30
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -77,7 +87,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -85,3 +95,4 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ghcr.io/uzbd/free-nodebb:latest
+          
