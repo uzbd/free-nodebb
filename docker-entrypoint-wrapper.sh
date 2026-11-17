@@ -1,3 +1,4 @@
+
 #!/bin/bash
 set -euo pipefail
 
@@ -10,16 +11,13 @@ cp -a /opt/nodebb-prebuilt-build/. /usr/src/app/build/
 
 mkdir -p "$CONFIG_DIR"
 
-# Render's filesystem is ephemeral. If the config is absent after a restart
-# or redeploy, recreate it from the Render environment variables, but skip
-# NodeBB's expensive asset compilation.
+# Recreate config if it does not exist, without rebuilding assets.
 if [ ! -f "$CONFIG" ]; then
   echo "NodeBB config not found; running setup without rebuilding assets..."
-  /usr/src/app/nodebb --config="$CONFIG" setup --skip-build
+  /usr/src/app/nodebb setup --config="$CONFIG" --skip-build
 fi
 
-# Mark the package set as built so the official upgrade check does not
-# trigger a second asset build during startup.
+# Mark the package set as built.
 PACKAGE_HASH="$(md5sum /usr/src/app/install/package.json | cut -d' ' -f1)"
 printf '%s' "$PACKAGE_HASH" > "$CONFIG_DIR/install_hash.md5"
 
